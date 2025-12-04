@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>创意文字麻将</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    <style>
+        :root { --bg: #2c3e50; --card-bg: #ecf0f1; --accent: #e74c3c; --highlight: #2ecc71; --selected-btn: #f39c12; }
+        body { margin: 0; padding: 0; font-family: 'PingFang SC', sans-serif; background: var(--bg); color: white; overflow-x: hidden; user-select: none;}
+        
+        #app { max-width: 600px; margin: 0 auto; padding: 10px; display: flex; flex-direction: column; height: 100vh; }
+        
+        /* 顶部栏 */
+        header { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px; }
+        
+        /* 玩家卡片 */
+        #players-area { display: flex; justify-content: space-around; margin: 10px 0; }
+        .player-card { background: rgba(255,255,255,0.1); padding: 5px; border-radius: 5px; text-align: center; font-size: 0.8em; position: relative; width: 22%; transition: all 0.3s;}
+        .player-card.active { border: 2px solid #f1c40f; box-shadow: 0 0 10px #f1c40f; transform: scale(1.05); }
+        .player-card.winner { border: 2px solid #2ecc71; background: rgba(46, 204, 113, 0.3); }
+        .dealer-tag { position: absolute; top: -8px; right: -8px; background: #e67e22; color: white; font-size: 0.7em; padding: 2px 4px; border-radius: 3px; z-index: 10;}
+        
+        /* 桌面 */
+        #board { flex: 1; display: flex; flex-direction: column; justify-content: center; position: relative; }
+        #discard-pile { 
+            height: 150px; background: rgba(0,0,0,0.2); border-radius: 8px; margin: 10px 0; padding: 10px; 
+            display: flex; flex-wrap: wrap; align-content: flex-start; overflow-y: auto;
+        }
+        .tile-sm { width: 24px; height: 32px; background: #bdc3c7; color: #333; margin: 2px; display: flex; align-items: center; justify-content: center; border-radius: 3px; font-size: 0.8em;}
+
+        /* 手牌区 */
+        #my-area { background: rgba(0,0,0,0.4); padding: 10px; border-radius: 10px; margin-top: auto; }
+        #hand { display: flex; flex-wrap: wrap; justify-content: center; min-height: 60px; touch-action: none; }
+        
+        /* 牌样式 */
+        .tile { 
+            width: 38px; height: 52px; background: var(--card-bg); color: #2c3e50; 
+            margin: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center; 
+            font-size: 1.3em; font-weight: bold; cursor: pointer; position: relative;
+            box-shadow: 0 4px 0 #95a5a6; 
+        }
+        .tile:active { transform: translateY(3px); box-shadow: 0 1px 0 #95a5a6; }
+        .tile.selected { border: 3px solid #e74c3c; transform: translateY(-8px); z-index: 10; }
+        .tile.new-tile { border: 2px solid var(--highlight); box-shadow: 0 0 10px var(--highlight); }
+        .sortable-ghost { opacity: 0.4; background: #f1c40f; } /* 拖拽时的占位样式 */
+        
+        /* 按钮与UI */
+        #controls { margin-top: 10px; display: flex; justify-content: space-around; flex-wrap: wrap; gap: 8px; }
+        button { padding: 12px 15px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; color: white; font-size: 1em; }
+        .btn-discard { background: #e74c3c; }
+        .btn-pitch { background: #2ecc71; }
+        .btn-draw { background: #3498db; }
+        .btn-eat { background: #9b59b6; }
+        .btn-ready { background: #f1c40f; color: #333; width: 100%; font-size: 1.2em; margin-top: 20px;}
+        .btn-rules { background: #7f8c8d; width: 100%; margin-top: 10px; }
+        button:disabled { background: #95a5a6; opacity: 0.5; cursor: default; }
+
+        /* 人数选择按钮 */
+        .player-count-btn { background: #34495e; color: #ccc; margin: 0 5px; width: 60px; }
+        .player-count-btn.active { background: var(--selected-btn); color: white; transform: scale(1.1); box-shadow: 0 0 10px var(--selected-btn); }
+
+        /* 模态窗 */
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; display: none; align-items: center; justify-content: center; flex-direction: column; }
+        #rules-modal { z-index: 300; }
+        .modal-content { background: #34495e; padding: 25px; border-radius: 10px; width: 85%; max-width: 400px; text-align: center; }
+        
+        /* 中央大提示 (Flash Message) */
+        #flash-overlay {
+            position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.85); color: #f1c40f; padding: 20px 40px; border-radius: 10px;
+            font-size: 1.5em; font-weight: bold; pointer-events: none; opacity: 0; transition: opacity 0.5s; z-index: 500; text-align: center; width: 80%;
+        }
+
+        #login-screen { position: absolute; top:0; left:0; width:100%; height:100%; background:#2c3e50; z-index:200; display:flex; flex-direction:column; justify-content:center; align-items:center; }
+        input[type="text"] { padding: 10px; font-size: 1.2em; text-align: center; margin-bottom: 20px; border-radius: 5px; border: none;}
+        input[type=range] { width: 80%; margin: 20px 0; }
+        
+        #pitch-display { display: flex; flex-wrap: wrap; justify-content: center; background: rgba(255,255,255,0.1); padding: 10px; border-radius: 5px; margin: 15px 0; }
+    </style>
+</head>
+<body>
+
+    <div id="flash-overlay"></div>
+
+    <div id="login-screen">
+        <h1 style="font-size: 2.5em; margin-bottom: 10px;">🀄 创意文字麻将</h1>
+        <p style="color:#bdc3c7; margin-bottom: 30px;">拼句 · 脑洞 · 嘴炮</p>
+        
+        <input type="text" id="username" placeholder="输入昵称" maxlength="6">
+        
+        <div style="width: 220px;">
+            <button onclick="joinGame()" class="btn-ready">进入房间</button>
+            <button onclick="showRules()" class="btn-rules">📜 游戏规则</button>
+        </div>
+    </div>
+
+    <div id="rules-modal" class="modal">
+        <div class="modal-content" style="text-align: left; max-height: 70vh; overflow-y: auto; color:#ecf0f1;">
+            <h2 style="text-align: center;">📜 规则说明</h2>
+            <p>1. <strong>流程：</strong>每人13张牌。轮流摸牌或吃牌，凑齐14张。</p>
+            <p>2. <strong>胡牌：</strong>点击【胡牌】并口述你的创意拼句。其余玩家评分。</p>
+            <p>3. <strong>评分：</strong>总分超过及格线即胡牌。及格线 = (人数-1) × 5。</p>
+            <p>4. <strong>惩罚：</strong>胡牌失败扣5分，并强制出牌。</p>
+            <br>
+            <button onclick="hideRules()" style="width:100%; background:#e74c3c;">关闭</button>
+        </div>
+    </div>
+
+    <div id="vote-modal" class="modal">
+        <div class="modal-content">
+            <h2 id="vote-title">玩家正在路演</h2>
+            <div id="pitch-display"></div>
+            <div id="voting-controls">
+                <p>请打分 (0-10)</p>
+                <div style="font-size: 2em; color: #f1c40f;" id="vote-val-display">5</div>
+                <input type="range" id="vote-range" min="0" max="10" value="5" oninput="document.getElementById('vote-val-display').innerText = this.value">
+                <button onclick="submitVote()" class="btn-pitch" style="width:80%">确认分数</button>
+            </div>
+            <div id="waiting-vote-msg" style="display:none; color:#f1c40f; margin-top:20px;">
+                正在等待评分...<br>请抓紧时间解释你的创意！
+            </div>
+        </div>
+    </div>
+
+    <div id="app" style="display:none;">
+        <header>
+            <div id="room-info">等待开始...</div>
+            <div style="font-size:0.8em; color:#f1c40f;" id="deck-info">牌山: 136</div>
+        </header>
+
+        <div id="players-area"></div>
+
+        <div id="board">
+            <div style="font-size:0.8em; color:#aaa; margin-left:10px;">弃牌堆:</div>
+            <div id="discard-pile"></div>
+        </div>
+
+        <div id="lobby-controls" style="text-align: center; margin-bottom: 20px;">
+            <h3>设置人数</h3>
+            <div>
+                <button id="btn-p2" class="player-count-btn" onclick="setPlayers(2)">2人</button>
+                <button id="btn-p3" class="player-count-btn" onclick="setPlayers(3)">3人</button>
+                <button id="btn-p4" class="player-count-btn active" onclick="setPlayers(4)">4人</button>
+            </div>
+            <button onclick="sendReady()" class="btn-ready">准备 / 开始</button>
+        </div>
+
+        <div id="my-area" style="display:none;">
+            <div id="controls">
+                <button onclick="sendAction('draw')" id="btn-draw" class="btn-draw" style="display:none;">🖐 摸牌</button>
+                <button onclick="sendAction('eat')" id="btn-eat" class="btn-eat" style="display:none;">🥣 吃</button>
+                <button onclick="actionDiscard()" class="btn-discard" id="btn-discard" disabled>🗑 出牌</button>
+                <button onclick="actionPitch()" class="btn-pitch" id="btn-pitch" disabled>✨ 胡牌</button>
+            </div>
+            <p style="font-size:0.8em; text-align:center; opacity:0.6; margin: 5px 0;">拖拽排序 · 点击选中</p>
+            <div id="hand"></div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let myId = null;
+        let myHand = [];
+        let newTileIndex = -1; 
+        let selectedTileIndex = null;
+        let sortableInstance = null; // Sortable 实例
+
+        // --- 核心功能 ---
+        function joinGame() {
+            const name = document.getElementById('username').value || '玩家';
+            socket.emit('join', name);
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('app').style.display = 'flex';
+        }
+        function setPlayers(n) { socket.emit('setPlayerCount', n); }
+        function sendReady() { socket.emit('ready'); }
+        function showRules() { document.getElementById('rules-modal').style.display = 'flex'; }
+        function hideRules() { document.getElementById('rules-modal').style.display = 'none'; }
+        
+        function showFlash(text) {
+            const el = document.getElementById('flash-overlay');
+            el.innerText = text;
+            el.style.opacity = 1;
+            setTimeout(() => { el.style.opacity = 0; }, 2500);
+        }
+
+        // --- Socket 监听 ---
+        socket.on('joined', (data) => { myId = data.id; });
+        socket.on('msg', (msg) => { /* 可以在这里加个小log，但现在主要靠Flash */ });
+        socket.on('flashMessage', (msg) => { showFlash(msg); });
+
+        // 设置更新：高亮按钮
+        socket.on('settingsUpdate', (settings) => {
+            [2, 3, 4].forEach(n => {
+                const btn = document.getElementById(`btn-p${n}`);
+                if (n === settings.playerCount) btn.classList.add('active');
+                else btn.classList.remove('active');
+            });
+        });
+
+        socket.on('gameStart', () => {
+            document.getElementById('lobby-controls').style.display = 'none';
+            document.getElementById('my-area').style.display = 'block';
+        });
+
+        socket.on('handUpdate', (data) => {
+            myHand = data.hand;
+            newTileIndex = data.newTileIndex;
+            renderHand();
+        });
+
+        socket.on('turnWaitAction', (data) => {
+            document.getElementById('btn-draw').style.display = 'inline-block';
+            document.getElementById('btn-discard').disabled = true;
+            document.getElementById('btn-pitch').disabled = true;
+
+            const btnEat = document.getElementById('btn-eat');
+            if (data.canEat) {
+                btnEat.style.display = 'inline-block';
+                btnEat.innerText = `🥣 吃 [${data.lastDiscard}]`;
+            } else {
+                btnEat.style.display = 'none';
+            }
+        });
+
+        socket.on('updateGame', (state) => {
+            // 强制关闭投票弹窗（防卡死）
+            if (state.status !== 'VOTING') {
+                document.getElementById('vote-modal').style.display = 'none';
+                document.getElementById('waiting-vote-msg').style.display = 'none';
+                document.getElementById('voting-controls').style.display = 'block';
+            }
+            
+            // 同步人数设置(针对后进来的玩家)
+            if (state.status === 'LOBBY') {
+                [2, 3, 4].forEach(n => {
+                    const btn = document.getElementById(`btn-p${n}`);
+                    if (n === state.settings.playerCount) btn.classList.add('active');
+                    else btn.classList.remove('active');
+                });
+            }
+
+            renderPlayers(state.players);
+            renderDiscard(state.discardPile);
+            
+            if(state.status === 'PLAYING') {
+                document.getElementById('room-info').innerText = state.roundInfo.text;
+                document.getElementById('deck-info').innerText = `牌山: ${state.roundInfo.deckCount}`;
+                
+                const me = state.players.find(p => p.id === myId);
+                const isDrawPhase = document.getElementById('btn-draw').style.display !== 'none';
+                
+                if (me && me.isTurn && !isDrawPhase) {
+                    document.getElementById('btn-discard').disabled = false;
+                    document.getElementById('btn-pitch').disabled = false;
+                    // 如果选中了牌，按钮更亮
+                    if (selectedTileIndex !== null) {
+                         document.getElementById('btn-discard').innerText = "🗑 出牌";
+                    } else {
+                         document.getElementById('btn-discard').innerText = "请选牌";
+                    }
+                } else if (!me.isTurn) {
+                    document.getElementById('btn-draw').style.display = 'none';
+                    document.getElementById('btn-eat').style.display = 'none';
+                    document.getElementById('btn-discard').disabled = true;
+                    document.getElementById('btn-pitch').disabled = true;
+                }
+            }
+        });
+
+        socket.on('voteResult', (data) => {
+            document.getElementById('vote-modal').style.display = 'none';
+            // 成功与否由flashMessage负责提示
+            if (!data.success && myId === data.pitcherId) {
+                // 本人失败特有提示
+                setTimeout(() => alert("创意未获认可，扣5分。请打出一张牌。"), 500);
+            }
+        });
+
+        socket.on('startVoting', (data) => {
+            const modal = document.getElementById('vote-modal');
+            const display = document.getElementById('pitch-display');
+            const ctrls = document.getElementById('voting-controls');
+            const waitMsg = document.getElementById('waiting-vote-msg');
+
+            modal.style.display = 'flex';
+            document.getElementById('vote-title').innerText = `${data.pitcherName} 正在路演`;
+            
+            display.innerHTML = '';
+            data.pitcherHand.forEach(char => {
+                const s = document.createElement('div');
+                s.className = 'tile';
+                s.innerText = char;
+                display.appendChild(s);
+            });
+
+            if (data.pitcherId === myId) {
+                ctrls.style.display = 'none';
+                waitMsg.style.display = 'block';
+            } else {
+                ctrls.style.display = 'block';
+                waitMsg.style.display = 'none';
+                document.getElementById('vote-range').value = 5;
+                document.getElementById('vote-val-display').innerText = 5;
+            }
+        });
+
+        // --- 渲染与交互 ---
+
+        function renderPlayers(players) {
+            const container = document.getElementById('players-area');
+            container.innerHTML = '';
+            players.forEach(p => {
+                const div = document.createElement('div');
+                div.className = `player-card ${p.isTurn ? 'active' : ''} ${p.hasWon ? 'winner' : ''}`;
+                div.innerHTML = `
+                    ${p.isDealer ? '<span class="dealer-tag">庄</span>' : ''}
+                    <div>${p.name}</div>
+                    <div style="font-weight:bold; color:#f1c40f">${p.score}</div>
+                    <div style="font-size:0.7em; color:#bdc3c7">${p.handCount}张</div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function renderDiscard(pile) {
+            const div = document.getElementById('discard-pile');
+            div.innerHTML = '';
+            pile.forEach(t => {
+                const s = document.createElement('div');
+                s.className = 'tile-sm';
+                s.innerText = t;
+                div.appendChild(s);
+            });
+            div.scrollTop = div.scrollHeight;
+        }
+
+        function renderHand() {
+            const handDiv = document.getElementById('hand');
+            handDiv.innerHTML = '';
+            
+            myHand.forEach((tile, index) => {
+                const el = document.createElement('div');
+                el.className = 'tile';
+                if (index === newTileIndex) el.classList.add('new-tile');
+                if (index === selectedTileIndex) el.classList.add('selected');
+                el.innerText = tile;
+                
+                // 设置 data-index 供 Sortable 使用
+                el.setAttribute('data-id', index); 
+
+                el.onclick = () => {
+                    if (selectedTileIndex === index) {
+                        selectedTileIndex = null;
+                    } else {
+                        selectedTileIndex = index;
+                    }
+                    renderHand(); // 重绘以更新选中状态
+                    // 如果轮到我，更新按钮文字
+                    const btnDiscard = document.getElementById('btn-discard');
+                    if(!btnDiscard.disabled) {
+                         btnDiscard.innerText = selectedTileIndex !== null ? "🗑 出牌" : "请选牌";
+                    }
+                };
+                handDiv.appendChild(el);
+            });
+
+            // 初始化或更新 Sortable (实现拖拽)
+            if (!sortableInstance) {
+                sortableInstance = new Sortable(handDiv, {
+                    animation: 150,
+                    ghostClass: 'sortable-ghost',
+                    delay: 100, // 防误触，长按一点点才能拖
+                    delayOnTouchOnly: true,
+                    onEnd: function (evt) {
+                        // 拖拽结束，同步 myHand 数组数据
+                        const item = myHand.splice(evt.oldIndex, 1)[0];
+                        myHand.splice(evt.newIndex, 0, item);
+                        
+                        // 如果拖动了新牌，取消高亮标记
+                        if (evt.oldIndex === newTileIndex) newTileIndex = -1;
+                        else if (newTileIndex > evt.oldIndex && newTileIndex <= evt.newIndex) newTileIndex--;
+                        else if (newTileIndex < evt.oldIndex && newTileIndex >= evt.newIndex) newTileIndex++;
+                        else if (newTileIndex === evt.newIndex) newTileIndex = evt.newIndex; // 没变
+                        
+                        // 重绘以确保 index 正确
+                        selectedTileIndex = null; // 拖动后取消选中防止错乱
+                        renderHand();
+                    },
+                });
+            }
+        }
+
+        function sendAction(type) {
+            socket.emit('playerAction', type);
+            document.getElementById('btn-draw').style.display = 'none';
+            document.getElementById('btn-eat').style.display = 'none';
+        }
+
+        function actionDiscard() {
+            if (selectedTileIndex === null) {
+                showFlash('请先点选一张牌');
+                return;
+            }
+            // 校验一下数组是否同步
+            socket.emit('discard', selectedTileIndex);
+            selectedTileIndex = null;
+        }
+
+        function actionPitch() {
+            // 将排序后的手牌发给服务器
+            socket.emit('pitch', { hand: myHand });
+        }
+
+        function submitVote() {
+            const val = document.getElementById('vote-range').value;
+            socket.emit('submitVote', val);
+            document.getElementById('vote-modal').style.display = 'none';
+        }
+    </script>
+</body>
+</html>
