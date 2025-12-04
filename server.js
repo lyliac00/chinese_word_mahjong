@@ -79,13 +79,14 @@ function getPublicState() {
         status: gameState.status,
         players: gameState.players.map(p => ({
             id: p.id,
+            uid: p.uid, // 增加 uid 方便前端识别自己
             name: p.name,
             score: p.score,
             handCount: p.hand.length,
             isDealer: p.isDealer,
             hasWon: p.hasWon,
             isTurn: gameState.status === 'PLAYING' && gameState.players.indexOf(p) === gameState.round.turnIndex,
-            history: p.history // 将历史胡牌数据发送给前端
+            history: p.history 
         })),
         roundInfo: {
             text: `东风场 第 ${gameState.round.wind + 1} 局`,
@@ -144,33 +145,82 @@ function endRound(isDraw) {
         });
     }
 
-    // 检查是否结束 (>= 4局)
     if (gameState.round.wind >= 4) {
         gameState.status = 'END';
         io.emit('updateGame', getPublicState());
-        // 不再自动开始，等待用户操作
     } else {
         setTimeout(() => { startRound(isRenchan); }, 4000);
     }
 }
 
 io.on('connection', (socket) => {
-    socket.on('join', (name) => {
-        if (gameState.status !== 'LOBBY') return;
-        if (gameState.players.length >= 4) return;
+    
+    // --- 核心修复：加入/重连逻辑 ---
+    socket.on('join', ({ name, uid }) => {
+        // 1. 检查是否存在该 uid 的老玩家
+        const existingPlayer = gameState.players.find(p => p.uid === uid);
+
+        if (existingPlayer) {
+            // --- 这是一个老玩家 (重连) ---
+            console.log(`Player ${name} (${uid}) reconnected.`);
+            
+            // 更新 Socket ID
+            existingPlayer.id = socket.id; 
+            // 允许更新名字，或者保持原样
+            if (name) existingPlayer.name = name;
+
+            socket.emit('joined', { id: socket.id });
+
+            // 立即补发状态，让前端恢复界面
+            if (gameState.status !== 'LOBBY') {
+                // 恢复游戏界面
+                socket.emit('gameStart', { round: gameState.round.wind + 1 });
+                // 恢复手牌
+                socket.emit('handUpdate', { hand: existingPlayer.hand, newTileIndex: -1 });
+                
+                // 恢复操作按钮（如果正好轮到他）
+                const pIndex = gameState.players.indexOf(existingPlayer);
+                if (gameState.status === 'PLAYING' && gameState.round.turnIndex === pIndex && !existingPlayer.hasWon) {
+                    socket.emit('turnWaitAction', { 
+                        canEat: gameState.round.canEat, 
+                        lastDiscard: gameState.discardPile[gameState.discardPile.length - 1] 
+                    });
+                }
+                // 恢复投票弹窗
+                if (gameState.status === 'VOTING') {
+                     socket.emit('startVoting', gameState.voting);
+                }
+            } else if (gameState.status === 'END') {
+                // 恢复结算界面
+                io.emit('updateGame', getPublicState());
+            }
+
+        } else {
+            // --- 这是一个新玩家 ---
+            if (gameState.status !== 'LOBBY') {
+                socket.emit('msg', '游戏已在进行中，无法加入');
+                return;
+            }
+            if (gameState.players.length >= 4) {
+                socket.emit('msg', '房间已满');
+                return;
+            }
+            
+            const newPlayer = {
+                id: socket.id,
+                uid: uid, // 存储前端传来的永久ID
+                name: name || `玩家${gameState.players.length+1}`,
+                hand: [],
+                score: 0,
+                isReady: false,
+                hasWon: false,
+                isDealer: false,
+                history: []
+            };
+            gameState.players.push(newPlayer);
+            socket.emit('joined', { id: socket.id });
+        }
         
-        const newPlayer = {
-            id: socket.id,
-            name: name || `玩家${gameState.players.length+1}`,
-            hand: [],
-            score: 0,
-            isReady: false,
-            hasWon: false,
-            isDealer: false,
-            history: [] // 新增：记录该玩家所有胡过的牌
-        };
-        gameState.players.push(newPlayer);
-        socket.emit('joined', { id: socket.id });
         io.emit('updateGame', getPublicState());
     });
 
@@ -272,14 +322,11 @@ function resolveVoting() {
     let msg = "";
     if (isPass) {
         pitcher.hasWon = true;
-        
-        // --- 核心修改：保存历史记录 ---
-        // 使用 slice() 深拷贝数组，防止后续引用修改
         pitcher.history.push([...gameState.voting.pitcherHand]); 
         
         gameState.round.winners.push(pitcher.id);
         const rank = gameState.round.winners.length;
-        let baseScore = rank === 1 ? 15 : (rank === 2 ? 10 : 5);
+        let baseScore = rank === 1 ? 20 : (rank === 2 ? 10 : 5);
         let creativeScore = Math.floor(totalVotes * 0.5);
         let finalScore = baseScore + creativeScore;
 
@@ -309,8 +356,8 @@ function resolveVoting() {
         }
 
     } else {
-        pitcher.score -= 10;
-        msg = `胡牌失败 (票${totalVotes}/${threshold}) 扣10分`;
+        pitcher.score -= 5;
+        msg = `胡牌失败 (票${totalVotes}/${threshold}) 扣5分`;
         
         io.emit('voteResult', { success: false, message: msg }); 
         io.emit('flashMessage', msg);
