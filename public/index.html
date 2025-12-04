@@ -11,7 +11,6 @@
         
         #app { max-width: 600px; margin: 0 auto; padding: 10px; display: flex; flex-direction: column; height: 100vh; }
         
-        /* 顶部栏 */
         header { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px; }
         
         /* 玩家卡片 */
@@ -43,9 +42,9 @@
         .tile:active { transform: translateY(3px); box-shadow: 0 1px 0 #95a5a6; }
         .tile.selected { border: 3px solid #e74c3c; transform: translateY(-8px); z-index: 10; }
         .tile.new-tile { border: 2px solid var(--highlight); box-shadow: 0 0 10px var(--highlight); }
-        .sortable-ghost { opacity: 0.4; background: #f1c40f; } /* 拖拽时的占位样式 */
+        .sortable-ghost { opacity: 0.4; background: #f1c40f; } 
         
-        /* 按钮与UI */
+        /* UI组件 */
         #controls { margin-top: 10px; display: flex; justify-content: space-around; flex-wrap: wrap; gap: 8px; }
         button { padding: 12px 15px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; color: white; font-size: 1em; }
         .btn-discard { background: #e74c3c; }
@@ -55,8 +54,6 @@
         .btn-ready { background: #f1c40f; color: #333; width: 100%; font-size: 1.2em; margin-top: 20px;}
         .btn-rules { background: #7f8c8d; width: 100%; margin-top: 10px; }
         button:disabled { background: #95a5a6; opacity: 0.5; cursor: default; }
-
-        /* 人数选择按钮 */
         .player-count-btn { background: #34495e; color: #ccc; margin: 0 5px; width: 60px; }
         .player-count-btn.active { background: var(--selected-btn); color: white; transform: scale(1.1); box-shadow: 0 0 10px var(--selected-btn); }
 
@@ -64,8 +61,6 @@
         .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; display: none; align-items: center; justify-content: center; flex-direction: column; }
         #rules-modal { z-index: 300; }
         .modal-content { background: #34495e; padding: 25px; border-radius: 10px; width: 85%; max-width: 400px; text-align: center; }
-        
-        /* 中央大提示 (Flash Message) */
         #flash-overlay {
             position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%);
             background: rgba(0,0,0,0.85); color: #f1c40f; padding: 20px 40px; border-radius: 10px;
@@ -75,8 +70,15 @@
         #login-screen { position: absolute; top:0; left:0; width:100%; height:100%; background:#2c3e50; z-index:200; display:flex; flex-direction:column; justify-content:center; align-items:center; }
         input[type="text"] { padding: 10px; font-size: 1.2em; text-align: center; margin-bottom: 20px; border-radius: 5px; border: none;}
         input[type=range] { width: 80%; margin: 20px 0; }
-        
         #pitch-display { display: flex; flex-wrap: wrap; justify-content: center; background: rgba(255,255,255,0.1); padding: 10px; border-radius: 5px; margin: 15px 0; }
+
+        /* --- 结算界面样式 --- */
+        #game-over-screen { position: absolute; top:0; left:0; width:100%; height:100%; background:#2c3e50; z-index:400; display:none; flex-direction:column; align-items:center; padding: 20px; box-sizing: border-box; overflow-y: auto;}
+        .rank-card { width: 100%; max-width: 500px; background: rgba(255,255,255,0.1); border-radius: 10px; margin-bottom: 15px; padding: 15px; }
+        .rank-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 10px; margin-bottom: 10px; }
+        .rank-title { font-size: 1.2em; font-weight: bold; color: #f1c40f; }
+        .history-row { display: flex; flex-wrap: wrap; margin-top: 5px; background: rgba(0,0,0,0.2); padding: 5px; border-radius: 5px; }
+        .history-row .tile-xs { width: 20px; height: 28px; background: #ecf0f1; color: #2c3e50; margin: 1px; display: flex; align-items: center; justify-content: center; border-radius: 2px; font-size: 0.7em; font-weight: bold;}
     </style>
 </head>
 <body>
@@ -86,13 +88,17 @@
     <div id="login-screen">
         <h1 style="font-size: 2.5em; margin-bottom: 10px;">🀄 创意文字麻将</h1>
         <p style="color:#bdc3c7; margin-bottom: 30px;">拼句 · 脑洞 · 嘴炮</p>
-        
         <input type="text" id="username" placeholder="输入昵称" maxlength="6">
-        
         <div style="width: 220px;">
             <button onclick="joinGame()" class="btn-ready">进入房间</button>
             <button onclick="showRules()" class="btn-rules">📜 游戏规则</button>
         </div>
+    </div>
+
+    <div id="game-over-screen">
+        <h1 style="color: #f1c40f; margin-bottom: 20px;">🏆 最终战绩 🏆</h1>
+        <div id="rank-list" style="width:100%"></div>
+        <button onclick="location.reload()" class="btn-ready" style="margin-top:20px; max-width: 200px;">返回大厅</button>
     </div>
 
     <div id="rules-modal" class="modal">
@@ -165,9 +171,8 @@
         let myHand = [];
         let newTileIndex = -1; 
         let selectedTileIndex = null;
-        let sortableInstance = null; // Sortable 实例
+        let sortableInstance = null;
 
-        // --- 核心功能 ---
         function joinGame() {
             const name = document.getElementById('username').value || '玩家';
             socket.emit('join', name);
@@ -186,12 +191,10 @@
             setTimeout(() => { el.style.opacity = 0; }, 2500);
         }
 
-        // --- Socket 监听 ---
         socket.on('joined', (data) => { myId = data.id; });
-        socket.on('msg', (msg) => { /* 可以在这里加个小log，但现在主要靠Flash */ });
+        socket.on('msg', (msg) => { });
         socket.on('flashMessage', (msg) => { showFlash(msg); });
 
-        // 设置更新：高亮按钮
         socket.on('settingsUpdate', (settings) => {
             [2, 3, 4].forEach(n => {
                 const btn = document.getElementById(`btn-p${n}`);
@@ -226,14 +229,20 @@
         });
 
         socket.on('updateGame', (state) => {
-            // 强制关闭投票弹窗（防卡死）
+            // 游戏结束处理
+            if (state.status === 'END') {
+                renderGameOver(state.players);
+                document.getElementById('game-over-screen').style.display = 'flex';
+                document.getElementById('app').style.display = 'none';
+                return;
+            }
+
             if (state.status !== 'VOTING') {
                 document.getElementById('vote-modal').style.display = 'none';
                 document.getElementById('waiting-vote-msg').style.display = 'none';
                 document.getElementById('voting-controls').style.display = 'block';
             }
             
-            // 同步人数设置(针对后进来的玩家)
             if (state.status === 'LOBBY') {
                 [2, 3, 4].forEach(n => {
                     const btn = document.getElementById(`btn-p${n}`);
@@ -255,7 +264,6 @@
                 if (me && me.isTurn && !isDrawPhase) {
                     document.getElementById('btn-discard').disabled = false;
                     document.getElementById('btn-pitch').disabled = false;
-                    // 如果选中了牌，按钮更亮
                     if (selectedTileIndex !== null) {
                          document.getElementById('btn-discard').innerText = "🗑 出牌";
                     } else {
@@ -272,9 +280,7 @@
 
         socket.on('voteResult', (data) => {
             document.getElementById('vote-modal').style.display = 'none';
-            // 成功与否由flashMessage负责提示
             if (!data.success && myId === data.pitcherId) {
-                // 本人失败特有提示
                 setTimeout(() => alert("创意未获认可，扣5分。请打出一张牌。"), 500);
             }
         });
@@ -307,7 +313,45 @@
             }
         });
 
-        // --- 渲染与交互 ---
+        // --- 渲染结算界面 ---
+        function renderGameOver(players) {
+            const list = document.getElementById('rank-list');
+            list.innerHTML = '';
+            
+            // 按分数排序
+            const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
+            
+            sortedPlayers.forEach((p, idx) => {
+                const card = document.createElement('div');
+                card.className = 'rank-card';
+                if (idx === 0) card.style.border = '2px solid #f1c40f'; // 冠军金边
+                
+                let medal = '';
+                if(idx === 0) medal = '🥇';
+                else if(idx === 1) medal = '🥈';
+                else if(idx === 2) medal = '🥉';
+
+                let historyHTML = '';
+                if (p.history && p.history.length > 0) {
+                    p.history.forEach(hand => {
+                        let tilesHTML = hand.map(t => `<div class="tile-xs">${t}</div>`).join('');
+                        historyHTML += `<div class="history-row">${tilesHTML}</div>`;
+                    });
+                } else {
+                    historyHTML = '<div style="font-size:0.8em; color:#95a5a6; margin-top:5px;">本局无胡牌记录</div>';
+                }
+
+                card.innerHTML = `
+                    <div class="rank-header">
+                        <div class="rank-title">${medal} ${p.name}</div>
+                        <div style="font-size:1.5em; font-weight:bold;">${p.score}分</div>
+                    </div>
+                    <div style="font-size:0.9em; color:#bdc3c7;">胡牌记录：</div>
+                    ${historyHTML}
+                `;
+                list.appendChild(card);
+            });
+        }
 
         function renderPlayers(players) {
             const container = document.getElementById('players-area');
@@ -340,25 +384,17 @@
         function renderHand() {
             const handDiv = document.getElementById('hand');
             handDiv.innerHTML = '';
-            
             myHand.forEach((tile, index) => {
                 const el = document.createElement('div');
                 el.className = 'tile';
                 if (index === newTileIndex) el.classList.add('new-tile');
                 if (index === selectedTileIndex) el.classList.add('selected');
                 el.innerText = tile;
-                
-                // 设置 data-index 供 Sortable 使用
                 el.setAttribute('data-id', index); 
-
                 el.onclick = () => {
-                    if (selectedTileIndex === index) {
-                        selectedTileIndex = null;
-                    } else {
-                        selectedTileIndex = index;
-                    }
-                    renderHand(); // 重绘以更新选中状态
-                    // 如果轮到我，更新按钮文字
+                    if (selectedTileIndex === index) { selectedTileIndex = null; } 
+                    else { selectedTileIndex = index; }
+                    renderHand(); 
                     const btnDiscard = document.getElementById('btn-discard');
                     if(!btnDiscard.disabled) {
                          btnDiscard.innerText = selectedTileIndex !== null ? "🗑 出牌" : "请选牌";
@@ -367,26 +403,20 @@
                 handDiv.appendChild(el);
             });
 
-            // 初始化或更新 Sortable (实现拖拽)
             if (!sortableInstance) {
                 sortableInstance = new Sortable(handDiv, {
                     animation: 150,
                     ghostClass: 'sortable-ghost',
-                    delay: 100, // 防误触，长按一点点才能拖
+                    delay: 100,
                     delayOnTouchOnly: true,
                     onEnd: function (evt) {
-                        // 拖拽结束，同步 myHand 数组数据
                         const item = myHand.splice(evt.oldIndex, 1)[0];
                         myHand.splice(evt.newIndex, 0, item);
-                        
-                        // 如果拖动了新牌，取消高亮标记
                         if (evt.oldIndex === newTileIndex) newTileIndex = -1;
                         else if (newTileIndex > evt.oldIndex && newTileIndex <= evt.newIndex) newTileIndex--;
                         else if (newTileIndex < evt.oldIndex && newTileIndex >= evt.newIndex) newTileIndex++;
-                        else if (newTileIndex === evt.newIndex) newTileIndex = evt.newIndex; // 没变
-                        
-                        // 重绘以确保 index 正确
-                        selectedTileIndex = null; // 拖动后取消选中防止错乱
+                        else if (newTileIndex === evt.newIndex) newTileIndex = evt.newIndex;
+                        selectedTileIndex = null;
                         renderHand();
                     },
                 });
@@ -398,22 +428,12 @@
             document.getElementById('btn-draw').style.display = 'none';
             document.getElementById('btn-eat').style.display = 'none';
         }
-
         function actionDiscard() {
-            if (selectedTileIndex === null) {
-                showFlash('请先点选一张牌');
-                return;
-            }
-            // 校验一下数组是否同步
+            if (selectedTileIndex === null) { showFlash('请先点选一张牌'); return; }
             socket.emit('discard', selectedTileIndex);
             selectedTileIndex = null;
         }
-
-        function actionPitch() {
-            // 将排序后的手牌发给服务器
-            socket.emit('pitch', { hand: myHand });
-        }
-
+        function actionPitch() { socket.emit('pitch', { hand: myHand }); }
         function submitVote() {
             const val = document.getElementById('vote-range').value;
             socket.emit('submitVote', val);
