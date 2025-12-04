@@ -15,8 +15,8 @@ const TILES_CONFIG = {
     chars: [
         "我", "你", "他", "她", "它", "谁", "人", "鬼", "神", "猪", "狗", "猫", "爸", "妈", "爷", "奶", "老", "板",
         "爱", "恨", "打", "吃", "喝", "睡", "玩", "杀", "救", "亲", "抱", "跑", "飞", "哭", "笑", "怕", "赢", "输", "是", "有", "无", "想", "要", "给", "抢", "看", "摸", "舔", "闻", "踩",
-        "钱", "屎", "尿", "屁", "饭", "酒", "烟", "车", "房", "命", "运", "气", "脸", "脑", "心", "胆", "天", "地", "水", "火", "梦", "话", "家", "国", "球", "肉", "血", "洞", "光", "床",
-        "大", "小", "多", "少", "好", "坏", "美", "丑", "骚", "浪", "贱", "纯", "笨", "强", "弱", "快", "慢", "爽", "痛", "难",
+        "钱", "风", "花", "屁", "饭", "酒", "烟", "车", "房", "命", "运", "气", "脸", "脑", "心", "胆", "天", "地", "水", "火", "梦", "话", "家", "国", "球", "肉", "血", "洞", "光", "床",
+        "大", "小", "多", "少", "好", "坏", "美", "丑", "雪", "浪", "月", "纯", "笨", "强", "弱", "快", "慢", "爽", "痛", "难",
         "的", "了", "吗", "呢", "吧", "啊", "不", "别", "很", "太", "更", "最", "被", "把", "让", "只", "又", "也",
         "哈", "嘿", "嘻", "哼", "靠", "滚", "操", "变", "态", "一", "二", "三", "万", "亿"
     ]
@@ -28,7 +28,7 @@ let gameState = {
     players: [],     
     deck: [],
     discardPile: [],
-    settings: { playerCount: 4 }, // 默认4人
+    settings: { playerCount: 4 }, 
     round: {
         wind: 0,
         dealerIndex: 0,
@@ -66,7 +66,6 @@ function nextTurn(allowEat = true) {
     const player = gameState.players[nextIndex];
     
     io.emit('updateGame', getPublicState());
-    // 简化：所有人显示大字提示，特定人显示操作按钮
     io.emit('flashMessage', `轮到 ${player.name}`);
     
     io.to(player.id).emit('turnWaitAction', { 
@@ -85,7 +84,8 @@ function getPublicState() {
             handCount: p.hand.length,
             isDealer: p.isDealer,
             hasWon: p.hasWon,
-            isTurn: gameState.status === 'PLAYING' && gameState.players.indexOf(p) === gameState.round.turnIndex
+            isTurn: gameState.status === 'PLAYING' && gameState.players.indexOf(p) === gameState.round.turnIndex,
+            history: p.history // 将历史胡牌数据发送给前端
         })),
         roundInfo: {
             text: `东风场 第 ${gameState.round.wind + 1} 局`,
@@ -93,7 +93,7 @@ function getPublicState() {
         },
         discardPile: gameState.discardPile,
         voting: gameState.voting,
-        settings: gameState.settings // 发送设置信息以便前端高亮
+        settings: gameState.settings 
     };
 }
 
@@ -144,10 +144,11 @@ function endRound(isDraw) {
         });
     }
 
+    // 检查是否结束 (>= 4局)
     if (gameState.round.wind >= 4) {
         gameState.status = 'END';
         io.emit('updateGame', getPublicState());
-        io.emit('flashMessage', '游戏结束！');
+        // 不再自动开始，等待用户操作
     } else {
         setTimeout(() => { startRound(isRenchan); }, 4000);
     }
@@ -158,9 +159,6 @@ io.on('connection', (socket) => {
         if (gameState.status !== 'LOBBY') return;
         if (gameState.players.length >= 4) return;
         
-        // 只有第一个人是房主（简单逻辑）
-        const isHost = gameState.players.length === 0;
-
         const newPlayer = {
             id: socket.id,
             name: name || `玩家${gameState.players.length+1}`,
@@ -168,17 +166,16 @@ io.on('connection', (socket) => {
             score: 0,
             isReady: false,
             hasWon: false,
-            isDealer: false
+            isDealer: false,
+            history: [] // 新增：记录该玩家所有胡过的牌
         };
         gameState.players.push(newPlayer);
-        socket.emit('joined', { id: socket.id, isHost });
+        socket.emit('joined', { id: socket.id });
         io.emit('updateGame', getPublicState());
     });
 
-    // 2. 更改人数设置 (同步高亮)
     socket.on('setPlayerCount', (n) => { 
         gameState.settings.playerCount = n; 
-        // 广播新设置，让所有人UI更新
         io.emit('settingsUpdate', gameState.settings);
     });
 
@@ -188,7 +185,6 @@ io.on('connection', (socket) => {
         io.emit('updateGame', getPublicState());
         const readyCount = gameState.players.filter(pl => pl.isReady).length;
         
-        // 必须满员才能开
         if (readyCount === gameState.settings.playerCount && readyCount >= 2) {
             gameState.round.wind = 0;
             const randDealer = Math.floor(Math.random() * readyCount);
@@ -225,8 +221,6 @@ io.on('connection', (socket) => {
     socket.on('discard', (tileIndex) => {
         const p = gameState.players.find(pl => pl.id === socket.id);
         if (!p || gameState.status !== 'PLAYING' || gameState.players.indexOf(p) !== gameState.round.turnIndex) return;
-
-        // 验证索引防止越界
         if (tileIndex < 0 || tileIndex >= p.hand.length) return;
 
         const tile = p.hand.splice(tileIndex, 1)[0];
@@ -241,8 +235,6 @@ io.on('connection', (socket) => {
         const p = gameState.players.find(pl => pl.id === socket.id);
         if (!p || gameState.status !== 'PLAYING' || p.hasWon) return;
 
-        // 更新服务器端的手牌顺序（以防拖拽后没同步）
-        // 这里简单信任前端传来的顺序
         if (data.hand && data.hand.length === p.hand.length) {
             p.hand = data.hand; 
         }
@@ -274,16 +266,20 @@ function resolveVoting() {
     const totalVotes = votes.reduce((a, b) => a + b, 0);
     const pitcher = gameState.players.find(p => p.id === gameState.voting.pitcherId);
     
-    // 动态门槛
     const threshold = (gameState.players.length - 1) * 5;
     const isPass = totalVotes > threshold;
     
     let msg = "";
     if (isPass) {
         pitcher.hasWon = true;
+        
+        // --- 核心修改：保存历史记录 ---
+        // 使用 slice() 深拷贝数组，防止后续引用修改
+        pitcher.history.push([...gameState.voting.pitcherHand]); 
+        
         gameState.round.winners.push(pitcher.id);
         const rank = gameState.round.winners.length;
-        let baseScore = rank === 1 ? 20 : (rank === 2 ? 10 : 5);
+        let baseScore = rank === 1 ? 15 : (rank === 2 ? 10 : 5);
         let creativeScore = Math.floor(totalVotes * 0.5);
         let finalScore = baseScore + creativeScore;
 
@@ -314,7 +310,7 @@ function resolveVoting() {
 
     } else {
         pitcher.score -= 10;
-        msg = `路演失败 (票${totalVotes}/${threshold}) 扣10分`;
+        msg = `胡牌失败 (票${totalVotes}/${threshold}) 扣10分`;
         
         io.emit('voteResult', { success: false, message: msg }); 
         io.emit('flashMessage', msg);
