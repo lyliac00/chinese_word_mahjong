@@ -98,7 +98,7 @@
     <div id="game-over-screen">
         <h1 style="color: #f1c40f; margin-bottom: 20px;">🏆 最终战绩 🏆</h1>
         <div id="rank-list" style="width:100%"></div>
-        <button onclick="location.reload()" class="btn-ready" style="margin-top:20px; max-width: 200px;">返回大厅</button>
+        <button onclick="location.reload()" class="btn-ready" style="margin-top:20px; max-width: 200px;">退出 / 重新开始</button>
     </div>
 
     <div id="rules-modal" class="modal">
@@ -173,12 +173,36 @@
         let selectedTileIndex = null;
         let sortableInstance = null;
 
+        // --- 核心修复：自动重连逻辑 ---
+        
+        // 1. 初始化时检查是否有存档
+        window.onload = function() {
+            const storedUid = localStorage.getItem('mj_uid');
+            const storedName = localStorage.getItem('mj_name');
+            
+            if (storedUid && storedName) {
+                // 有存档，填充名字并尝试自动连接
+                document.getElementById('username').value = storedName;
+                socket.emit('join', { name: storedName, uid: storedUid });
+            }
+        }
+
         function joinGame() {
             const name = document.getElementById('username').value || '玩家';
-            socket.emit('join', name);
-            document.getElementById('login-screen').style.display = 'none';
-            document.getElementById('app').style.display = 'flex';
+            
+            // 2. 生成或读取 UID
+            let uid = localStorage.getItem('mj_uid');
+            if (!uid) {
+                uid = 'user_' + Math.random().toString(36).substr(2, 9);
+                localStorage.setItem('mj_uid', uid);
+            }
+            // 保存名字
+            localStorage.setItem('mj_name', name);
+
+            // 3. 发送给服务器 (带上 UID)
+            socket.emit('join', { name: name, uid: uid });
         }
+
         function setPlayers(n) { socket.emit('setPlayerCount', n); }
         function sendReady() { socket.emit('ready'); }
         function showRules() { document.getElementById('rules-modal').style.display = 'flex'; }
@@ -191,8 +215,22 @@
             setTimeout(() => { el.style.opacity = 0; }, 2500);
         }
 
-        socket.on('joined', (data) => { myId = data.id; });
-        socket.on('msg', (msg) => { });
+        // --- Socket 监听 ---
+        socket.on('joined', (data) => { 
+            myId = data.id; 
+            // 只有成功加入后才切换界面
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('app').style.display = 'flex';
+        });
+
+        socket.on('msg', (msg) => { 
+            // 错误处理：如果服务器拒绝加入（房间满且不是老玩家）
+            if(msg.includes('房间已满') || msg.includes('无法加入')) {
+                alert(msg);
+                document.getElementById('login-screen').style.display = 'flex';
+                document.getElementById('app').style.display = 'none';
+            }
+        });
         socket.on('flashMessage', (msg) => { showFlash(msg); });
 
         socket.on('settingsUpdate', (settings) => {
@@ -206,6 +244,9 @@
         socket.on('gameStart', () => {
             document.getElementById('lobby-controls').style.display = 'none';
             document.getElementById('my-area').style.display = 'block';
+            // 确保切入游戏画面（针对重连情况）
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('app').style.display = 'flex';
         });
 
         socket.on('handUpdate', (data) => {
@@ -258,10 +299,15 @@
                 document.getElementById('room-info').innerText = state.roundInfo.text;
                 document.getElementById('deck-info').innerText = `牌山: ${state.roundInfo.deckCount}`;
                 
-                const me = state.players.find(p => p.id === myId);
+                // 使用本地存储的 UID 来确认“我是谁”，比 socket.id 更稳定
+                const storedUid = localStorage.getItem('mj_uid');
+                const me = state.players.find(p => p.uid === storedUid);
+                
+                if (!me) return;
+
                 const isDrawPhase = document.getElementById('btn-draw').style.display !== 'none';
                 
-                if (me && me.isTurn && !isDrawPhase) {
+                if (me.isTurn && !isDrawPhase) {
                     document.getElementById('btn-discard').disabled = false;
                     document.getElementById('btn-pitch').disabled = false;
                     if (selectedTileIndex !== null) {
@@ -302,7 +348,12 @@
                 display.appendChild(s);
             });
 
-            if (data.pitcherId === myId) {
+            // 这里的判定稍微宽松一点，防止 socket.id 变化导致的 bug
+            const storedUid = localStorage.getItem('mj_uid');
+            const pitcher = data.pitcherId; // 这是 socketID
+            // 如果我是发起人 (这里后端发来的 data 没有 uid，暂时还是用 socketID 判定)
+            // 重连后 socketID 已更新，所以这里逻辑是通的
+            if (pitcher === socket.id) {
                 ctrls.style.display = 'none';
                 waitMsg.style.display = 'block';
             } else {
@@ -313,18 +364,16 @@
             }
         });
 
-        // --- 渲染结算界面 ---
         function renderGameOver(players) {
             const list = document.getElementById('rank-list');
             list.innerHTML = '';
             
-            // 按分数排序
             const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
             
             sortedPlayers.forEach((p, idx) => {
                 const card = document.createElement('div');
                 card.className = 'rank-card';
-                if (idx === 0) card.style.border = '2px solid #f1c40f'; // 冠军金边
+                if (idx === 0) card.style.border = '2px solid #f1c40f'; 
                 
                 let medal = '';
                 if(idx === 0) medal = '🥇';
