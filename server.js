@@ -9,14 +9,14 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- 核心修改：生成服务器唯一实例 ID ---
-// 每次重启服务器，这个 ID 都会变
+// --- 服务器唯一实例 ID ---
 const SERVER_ID = Date.now().toString();
 
+// --- 汉字库配置 (已移除不雅词汇) ---
 const TILES_CONFIG = {
-    wildcard: "❀",
+    wildcard: "⬜",
     chars: [
-        // --- 原有基础字库 ---
+        // --- 原有基础字库 (已清理) ---
         "我", "你", "他", "她", "它", "谁", "人", "鬼", "神", "猪", "狗", "猫", "爸", "妈", "爷", "奶", "老", "板",
         "爱", "恨", "打", "吃", "喝", "睡", "玩", "杀", "救", "亲", "抱", "跑", "飞", "哭", "笑", "怕", "赢", "输", "是", "有", "无", "想", "要", "给", "抢", "看", "摸", "舔", "闻", "踩",
         "钱", "屁", "饭", "酒", "烟", "车", "房", "命", "运", "气", "脸", "脑", "心", "胆", "天", "地", "水", "火", "梦", "话", "家", "国", "球", "肉", "血", "洞", "光", "床",
@@ -24,14 +24,16 @@ const TILES_CONFIG = {
         "的", "了", "吗", "呢", "吧", "啊", "不", "别", "很", "太", "更", "最", "被", "把", "让", "只", "又", "也",
         "哈", "嘿", "嘻", "哼", "靠", "滚", "操", "变", "态", "一", "二", "三", "万", "亿",
         
-        // --- 新增文档中的字 (去重后追加) ---
+        // --- 新增文档中的字 ---
         "们", "这", "那", "啥", "都", "每", "友", "朋", "女", "忙", "闲", "走", "跳", "听", "说", "坐", "早", "晚", "今", "昨", 
         "明", "前", "后", "里", "外", "如", "完", "春", "夏", "秋", "冬", "像", "喜", "怒", "哀", "乐", "愁", "点", "醉", "甜", 
         "热", "冷", "白", "惊", "眼", "烦", "风", "花", "日", "男", "为", "海", "到", "长", "短", "高", "低", "中", "深", "浅", 
         "过", "见", "上", "哦", "嗯", "就", "饿", "个", "道", "问", "真", "假", "发", "生", "意", "情", "向", "掉", "书", "知", 
-        "画", "活", "死", "得", "着", "将", "和", "或", "且"
+        "画", "活", "死", "得", "着", "将", "和", "或", "且", "胡", "翻", "倍", "换", "抽", "杠", "碰", "炸"
     ]
 };
+// 去重
+TILES_CONFIG.chars = [...new Set(TILES_CONFIG.chars)];
 
 let gameState = {
     status: 'LOBBY', 
@@ -154,21 +156,17 @@ function endRound(isDraw) {
 
 io.on('connection', (socket) => {
     
-    // --- 核心修改：连接即发送服务器ID ---
     socket.emit('welcome', { serverId: SERVER_ID });
     
     socket.on('join', ({ name, uid }) => {
         const existingPlayer = gameState.players.find(p => p.uid === uid);
 
         if (existingPlayer) {
-            // 老玩家重连
             console.log(`Player ${name} reconnected.`);
             existingPlayer.id = socket.id; 
             if (name) existingPlayer.name = name;
-
             socket.emit('joined', { id: socket.id });
 
-            // 补发状态
             if (gameState.status !== 'LOBBY') {
                 socket.emit('gameStart', { round: gameState.round.wind + 1 });
                 socket.emit('handUpdate', { hand: existingPlayer.hand, newTileIndex: -1 });
@@ -185,7 +183,6 @@ io.on('connection', (socket) => {
                 io.emit('updateGame', getPublicState());
             }
         } else {
-            // 新玩家
             if (gameState.status !== 'LOBBY') {
                 socket.emit('msg', '游戏已在进行中，无法加入');
                 return;
@@ -255,6 +252,22 @@ io.on('connection', (socket) => {
         }
     });
 
+    // 处理手牌排序同步
+    socket.on('reorder', (newHand) => {
+        const p = gameState.players.find(pl => pl.id === socket.id);
+        if (!p) return;
+        
+        // 防作弊校验
+        const currentSorted = [...p.hand].sort().join('');
+        const newSorted = [...newHand].sort().join('');
+        
+        if (currentSorted === newSorted) {
+            p.hand = newHand; // 更新服务器端手牌
+        } else {
+            socket.emit('handUpdate', { hand: p.hand, newTileIndex: -1 });
+        }
+    });
+
     socket.on('discard', (tileIndex) => {
         const p = gameState.players.find(pl => pl.id === socket.id);
         if (!p || gameState.status !== 'PLAYING' || gameState.players.indexOf(p) !== gameState.round.turnIndex) return;
@@ -312,7 +325,7 @@ function resolveVoting() {
         else io.emit('updateGame', getPublicState());
     } else {
         pitcher.score -= 5;
-        msg = `胡牌失败 (票${totalVotes}/${threshold}) 扣5分`;
+        msg = `路演失败 (票${totalVotes}/${threshold}) 扣5分`;
         io.emit('voteResult', { success: false, message: msg }); 
         io.emit('flashMessage', msg);
         gameState.status = 'PLAYING';
