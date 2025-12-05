@@ -6,7 +6,24 @@
     <title>创意文字麻将</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
     <style>
-        :root { --bg: #2c3e50; --card-bg: #ecf0f1; --accent: #e74c3c; --highlight: #2ecc71; --selected-btn: #f39c12; }
+        /* --- 核心配色修改 --- */
+        :root { 
+            /* 页面背景：深绿 */
+            --bg: #386641; 
+            
+            /* 麻将牌底色：保持灰白 */
+            --card-bg: #ecf0f1; 
+            
+            /* 强调色：保持红色 (用于出牌等) */
+            --accent: #e74c3c; 
+            
+            /* 高亮色：保持绿色 (用于新牌) */
+            --highlight: #2ecc71; 
+            
+            /* 选中按钮颜色：保持橙色 */
+            --selected-btn: #f39c12; 
+        }
+
         body { margin: 0; padding: 0; font-family: 'PingFang SC', sans-serif; background: var(--bg); color: white; overflow-x: hidden; user-select: none;}
         
         #app { max-width: 600px; margin: 0 auto; padding: 10px; display: flex; flex-direction: column; height: 100vh; }
@@ -51,8 +68,20 @@
         .btn-pitch { background: #2ecc71; }
         .btn-draw { background: #3498db; }
         .btn-eat { background: #9b59b6; }
-        .btn-ready { background: #f1c40f; color: #333; width: 100%; font-size: 1.2em; margin-top: 20px;}
-        .btn-rules { background: #7f8c8d; width: 100%; margin-top: 10px; }
+        
+        /* --- 这里的配色修改 --- */
+        .btn-ready { 
+            background: #bc4749; /* 暗红色 */
+            color: white;        /* 字体改为白色，更清晰 */
+            width: 100%; font-size: 1.2em; margin-top: 20px;
+        }
+        .btn-rules { 
+            background: #588157; /* 灰绿色 */
+            color: white;
+            width: 100%; margin-top: 10px; 
+        }
+        /* ------------------- */
+
         button:disabled { background: #95a5a6; opacity: 0.5; cursor: default; }
         .player-count-btn { background: #34495e; color: #ccc; margin: 0 5px; width: 60px; }
         .player-count-btn.active { background: var(--selected-btn); color: white; transform: scale(1.1); box-shadow: 0 0 10px var(--selected-btn); }
@@ -67,13 +96,18 @@
             font-size: 1.5em; font-weight: bold; pointer-events: none; opacity: 0; transition: opacity 0.5s; z-index: 500; text-align: center; width: 80%;
         }
 
-        #login-screen { position: absolute; top:0; left:0; width:100%; height:100%; background:#2c3e50; z-index:200; display:flex; flex-direction:column; justify-content:center; align-items:center; }
+        /* 登录页样式修改 */
+        #login-screen { 
+            position: absolute; top:0; left:0; width:100%; height:100%; 
+            background: #386641; /* 确保登录页背景也是深绿 */
+            z-index:200; display:flex; flex-direction:column; justify-content:center; align-items:center; 
+        }
         input[type="text"] { padding: 10px; font-size: 1.2em; text-align: center; margin-bottom: 20px; border-radius: 5px; border: none;}
         input[type=range] { width: 80%; margin: 20px 0; }
         #pitch-display { display: flex; flex-wrap: wrap; justify-content: center; background: rgba(255,255,255,0.1); padding: 10px; border-radius: 5px; margin: 15px 0; }
 
         /* --- 结算界面样式 --- */
-        #game-over-screen { position: absolute; top:0; left:0; width:100%; height:100%; background:#2c3e50; z-index:400; display:none; flex-direction:column; align-items:center; padding: 20px; box-sizing: border-box; overflow-y: auto;}
+        #game-over-screen { position: absolute; top:0; left:0; width:100%; height:100%; background:var(--bg); z-index:400; display:none; flex-direction:column; align-items:center; padding: 20px; box-sizing: border-box; overflow-y: auto;}
         .rank-card { width: 100%; max-width: 500px; background: rgba(255,255,255,0.1); border-radius: 10px; margin-bottom: 15px; padding: 15px; }
         .rank-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 10px; margin-bottom: 10px; }
         .rank-title { font-size: 1.2em; font-weight: bold; color: #f1c40f; }
@@ -87,8 +121,7 @@
 
     <div id="login-screen">
         <h1 style="font-size: 2.5em; margin-bottom: 10px;">🀄 创意文字麻将</h1>
-        <p style="color:#bdc3c7; margin-bottom: 30px;">拼句 · 脑洞 · 嘴炮</p>
-        <input type="text" id="username" placeholder="输入昵称" maxlength="6">
+        <p style="color:#a7c957; margin-bottom: 30px;">拼句 · 脑洞 · 嘴炮</p> <input type="text" id="username" placeholder="输入昵称" maxlength="6">
         <div style="width: 220px;">
             <button onclick="joinGame()" class="btn-ready">进入房间</button>
             <button onclick="showRules()" class="btn-rules">📜 游戏规则</button>
@@ -138,7 +171,7 @@
         <div id="players-area"></div>
 
         <div id="board">
-            <div style="font-size:0.8em; color:#aaa; margin-left:10px;">弃牌堆:</div>
+            <div style="font-size:0.8em; color:#a7c957; margin-left:10px;">弃牌堆:</div>
             <div id="discard-pile"></div>
         </div>
 
@@ -173,33 +206,41 @@
         let selectedTileIndex = null;
         let sortableInstance = null;
 
-        // --- 核心修复：自动重连逻辑 ---
+        // --- 核心修复：服务器握手与自动登录 ---
         
-        // 1. 初始化时检查是否有存档
-        window.onload = function() {
+        socket.on('welcome', (data) => {
+            const serverId = data.serverId;
+            const storedServerId = localStorage.getItem('mj_server_id');
             const storedUid = localStorage.getItem('mj_uid');
             const storedName = localStorage.getItem('mj_name');
-            
-            if (storedUid && storedName) {
-                // 有存档，填充名字并尝试自动连接
+
+            // 如果本地存的 ServerID 和服务器发来的不一样，说明服务器重启过
+            // 必须强制登出，生成新身份
+            if (storedServerId !== serverId) {
+                console.log("Server reset detected. Clearing local session.");
+                localStorage.clear(); 
+                localStorage.setItem('mj_server_id', serverId); // 记录新的 Server ID
+                // 停留在登录页，等待用户输入新名字
+            } 
+            // 如果 ID 一样，且有账号记录，尝试自动重连
+            else if (storedUid && storedName) {
+                console.log("Same server session. Auto-reconnecting...");
                 document.getElementById('username').value = storedName;
                 socket.emit('join', { name: storedName, uid: storedUid });
             }
-        }
+        });
 
         function joinGame() {
             const name = document.getElementById('username').value || '玩家';
             
-            // 2. 生成或读取 UID
+            // 读取或生成 UID
             let uid = localStorage.getItem('mj_uid');
             if (!uid) {
-                uid = 'user_' + Math.random().toString(36).substr(2, 9);
+                uid = 'u_' + Date.now().toString(36) + Math.random().toString(36).substr(2);
                 localStorage.setItem('mj_uid', uid);
             }
-            // 保存名字
             localStorage.setItem('mj_name', name);
 
-            // 3. 发送给服务器 (带上 UID)
             socket.emit('join', { name: name, uid: uid });
         }
 
@@ -299,7 +340,7 @@
                 document.getElementById('room-info').innerText = state.roundInfo.text;
                 document.getElementById('deck-info').innerText = `牌山: ${state.roundInfo.deckCount}`;
                 
-                // 使用本地存储的 UID 来确认“我是谁”，比 socket.id 更稳定
+                // 使用本地存储的 UID 来确认“我是谁”
                 const storedUid = localStorage.getItem('mj_uid');
                 const me = state.players.find(p => p.uid === storedUid);
                 
@@ -348,12 +389,7 @@
                 display.appendChild(s);
             });
 
-            // 这里的判定稍微宽松一点，防止 socket.id 变化导致的 bug
-            const storedUid = localStorage.getItem('mj_uid');
-            const pitcher = data.pitcherId; // 这是 socketID
-            // 如果我是发起人 (这里后端发来的 data 没有 uid，暂时还是用 socketID 判定)
-            // 重连后 socketID 已更新，所以这里逻辑是通的
-            if (pitcher === socket.id) {
+            if (data.pitcherId === socket.id) {
                 ctrls.style.display = 'none';
                 waitMsg.style.display = 'block';
             } else {
@@ -367,19 +403,13 @@
         function renderGameOver(players) {
             const list = document.getElementById('rank-list');
             list.innerHTML = '';
-            
             const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
-            
             sortedPlayers.forEach((p, idx) => {
                 const card = document.createElement('div');
                 card.className = 'rank-card';
                 if (idx === 0) card.style.border = '2px solid #f1c40f'; 
-                
                 let medal = '';
-                if(idx === 0) medal = '🥇';
-                else if(idx === 1) medal = '🥈';
-                else if(idx === 2) medal = '🥉';
-
+                if(idx === 0) medal = '🥇'; else if(idx === 1) medal = '🥈'; else if(idx === 2) medal = '🥉';
                 let historyHTML = '';
                 if (p.history && p.history.length > 0) {
                     p.history.forEach(hand => {
@@ -389,7 +419,6 @@
                 } else {
                     historyHTML = '<div style="font-size:0.8em; color:#95a5a6; margin-top:5px;">本局无胡牌记录</div>';
                 }
-
                 card.innerHTML = `
                     <div class="rank-header">
                         <div class="rank-title">${medal} ${p.name}</div>
