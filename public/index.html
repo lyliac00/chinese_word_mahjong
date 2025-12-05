@@ -6,21 +6,12 @@
     <title>创意文字麻将</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
     <style>
-        /* --- 核心配色修改 --- */
+        /* --- 森林系配色修改 --- */
         :root { 
-            /* 页面背景：深绿 */
             --bg: #386641; 
-            
-            /* 麻将牌底色：保持灰白 */
             --card-bg: #ecf0f1; 
-            
-            /* 强调色：保持红色 (用于出牌等) */
             --accent: #e74c3c; 
-            
-            /* 高亮色：保持绿色 (用于新牌) */
             --highlight: #2ecc71; 
-            
-            /* 选中按钮颜色：保持橙色 */
             --selected-btn: #f39c12; 
         }
 
@@ -69,10 +60,10 @@
         .btn-draw { background: #3498db; }
         .btn-eat { background: #9b59b6; }
         
-        /* --- 这里的配色修改 --- */
+        /* --- 配色修改 --- */
         .btn-ready { 
             background: #bc4749; /* 暗红色 */
-            color: white;        /* 字体改为白色，更清晰 */
+            color: white; 
             width: 100%; font-size: 1.2em; margin-top: 20px;
         }
         .btn-rules { 
@@ -80,7 +71,6 @@
             color: white;
             width: 100%; margin-top: 10px; 
         }
-        /* ------------------- */
 
         button:disabled { background: #95a5a6; opacity: 0.5; cursor: default; }
         .player-count-btn { background: #34495e; color: #ccc; margin: 0 5px; width: 60px; }
@@ -96,10 +86,10 @@
             font-size: 1.5em; font-weight: bold; pointer-events: none; opacity: 0; transition: opacity 0.5s; z-index: 500; text-align: center; width: 80%;
         }
 
-        /* 登录页样式修改 */
+        /* 登录页样式 */
         #login-screen { 
             position: absolute; top:0; left:0; width:100%; height:100%; 
-            background: #386641; /* 确保登录页背景也是深绿 */
+            background: #386641; 
             z-index:200; display:flex; flex-direction:column; justify-content:center; align-items:center; 
         }
         input[type="text"] { padding: 10px; font-size: 1.2em; text-align: center; margin-bottom: 20px; border-radius: 5px; border: none;}
@@ -121,7 +111,8 @@
 
     <div id="login-screen">
         <h1 style="font-size: 2.5em; margin-bottom: 10px;">🀄 创意文字麻将</h1>
-        <p style="color:#a7c957; margin-bottom: 30px;">拼句 · 脑洞 · 嘴炮</p> <input type="text" id="username" placeholder="输入昵称" maxlength="6">
+        <p style="color:#a7c957; margin-bottom: 30px;">拼句 · 脑洞 · 嘴炮</p>
+        <input type="text" id="username" placeholder="输入昵称" maxlength="6">
         <div style="width: 220px;">
             <button onclick="joinGame()" class="btn-ready">进入房间</button>
             <button onclick="showRules()" class="btn-rules">📜 游戏规则</button>
@@ -214,15 +205,11 @@
             const storedUid = localStorage.getItem('mj_uid');
             const storedName = localStorage.getItem('mj_name');
 
-            // 如果本地存的 ServerID 和服务器发来的不一样，说明服务器重启过
-            // 必须强制登出，生成新身份
             if (storedServerId !== serverId) {
                 console.log("Server reset detected. Clearing local session.");
                 localStorage.clear(); 
-                localStorage.setItem('mj_server_id', serverId); // 记录新的 Server ID
-                // 停留在登录页，等待用户输入新名字
+                localStorage.setItem('mj_server_id', serverId); 
             } 
-            // 如果 ID 一样，且有账号记录，尝试自动重连
             else if (storedUid && storedName) {
                 console.log("Same server session. Auto-reconnecting...");
                 document.getElementById('username').value = storedName;
@@ -233,7 +220,6 @@
         function joinGame() {
             const name = document.getElementById('username').value || '玩家';
             
-            // 读取或生成 UID
             let uid = localStorage.getItem('mj_uid');
             if (!uid) {
                 uid = 'u_' + Date.now().toString(36) + Math.random().toString(36).substr(2);
@@ -256,16 +242,13 @@
             setTimeout(() => { el.style.opacity = 0; }, 2500);
         }
 
-        // --- Socket 监听 ---
         socket.on('joined', (data) => { 
             myId = data.id; 
-            // 只有成功加入后才切换界面
             document.getElementById('login-screen').style.display = 'none';
             document.getElementById('app').style.display = 'flex';
         });
 
         socket.on('msg', (msg) => { 
-            // 错误处理：如果服务器拒绝加入（房间满且不是老玩家）
             if(msg.includes('房间已满') || msg.includes('无法加入')) {
                 alert(msg);
                 document.getElementById('login-screen').style.display = 'flex';
@@ -285,7 +268,6 @@
         socket.on('gameStart', () => {
             document.getElementById('lobby-controls').style.display = 'none';
             document.getElementById('my-area').style.display = 'block';
-            // 确保切入游戏画面（针对重连情况）
             document.getElementById('login-screen').style.display = 'none';
             document.getElementById('app').style.display = 'flex';
         });
@@ -311,7 +293,6 @@
         });
 
         socket.on('updateGame', (state) => {
-            // 游戏结束处理
             if (state.status === 'END') {
                 renderGameOver(state.players);
                 document.getElementById('game-over-screen').style.display = 'flex';
@@ -340,7 +321,6 @@
                 document.getElementById('room-info').innerText = state.roundInfo.text;
                 document.getElementById('deck-info').innerText = `牌山: ${state.roundInfo.deckCount}`;
                 
-                // 使用本地存储的 UID 来确认“我是谁”
                 const storedUid = localStorage.getItem('mj_uid');
                 const me = state.players.find(p => p.uid === storedUid);
                 
@@ -496,6 +476,9 @@
                         else if (newTileIndex === evt.newIndex) newTileIndex = evt.newIndex;
                         selectedTileIndex = null;
                         renderHand();
+
+                        // --- 关键：发送排序更新给服务器 ---
+                        socket.emit('reorder', myHand);
                     },
                 });
             }
